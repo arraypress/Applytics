@@ -1,0 +1,22 @@
+name = "cloudflare-applytics"
+main = "src/index.js"
+compatibility_date = "2023-10-02"
+
+[vars]
+ENVIRONMENT = "development"
+API_KEY = "your-single-secret-key"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "applytics_local"
+database_id = "applytics-local"
+
+[env.production]
+[env.production.vars]
+ENVIRONMENT = "production"
+# Use: wrangler secret put API_KEY --env production
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "applytics_production"
+database_id = "your-actual-db-id"

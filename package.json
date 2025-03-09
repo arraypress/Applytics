@@ -1,0 +1,40 @@
+{
+  "name": "cloudflare-applytics",
+  "version": "0.1.0",
+  "description": "A lightweight, privacy-focused analytics platform for mobile apps built on Cloudflare Workers and D1",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "build": "wrangler build",
+    "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --env production",
+    "setup": "npm run setup:db",
+    "setup:db": "wrangler d1 execute applytics_local --local --file=./schema.sql",
+    "setup:prod": "wrangler d1 execute applytics_production --file=./schema.sql --env production",
+    "db": "npm run db:info",
+    "db:info": "wrangler d1 execute applytics_local --local --command \"SELECT name FROM sqlite_master WHERE type='table'\"",
+    "db:events": "wrangler d1 execute applytics_local --local --command \"SELECT * FROM events\"",
+    "db:stats": "wrangler d1 execute applytics_local --local --command \"SELECT * FROM stats\"",
+    "db:reset": "wrangler d1 execute applytics_local --local --file=./schema.sql"
+  },
+  "keywords": [
+    "analytics",
+    "cloudflare",
+    "workers",
+    "d1",
+    "mobile",
+    "privacy",
+    "ios",
+    "android"
+  ],
+  "author": "ArrayPress Limited",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arraypress/cloudflare-applytics"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.0"
+  }
+}
