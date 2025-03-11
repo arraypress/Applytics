@@ -1,6 +1,6 @@
 # Cloudflare Applytics
 
-A lightweight, privacy-focused analytics tracking and reporting system built for Cloudflare Workers.
+A lightweight, privacy-focused analytics tracking and reporting system built on Cloudflare Workers and D1.
 
 ## Privacy-First Analytics
 
@@ -33,45 +33,81 @@ This solution is ideal for developers who want basic app metrics without becomin
 
 Track critical milestones in your app's lifecycle:
 
-```javascript
-// Track app installation
-client.track("install", { value: 1, category: "lifecycle" });
+```bash
+# Track app installation
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "install", "value": 1, "category": "lifecycle"}'
 
-// Track app update
-client.track("update", { qualifier: "1.2.0", category: "lifecycle" });
+# Track app update
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "update", "qualifier": "1.2.0", "category": "lifecycle"}'
 
-// Track app uninstall
-client.track("uninstall", { category: "lifecycle" });
+# Track app uninstall
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "uninstall", "category": "lifecycle"}'
 ```
 
 ### User Engagement
 
 Measure how users interact with your app without tracking personal data:
 
-```javascript
-// Track page views
-client.track("page_view", { qualifier: "home" });
+```bash
+# Track page views
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "page_view", "qualifier": "home"}'
 
-// Track feature usage
-client.track("feature_used", { qualifier: "dark_mode" });
+# Track feature usage
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "feature_used", "qualifier": "dark_mode"}'
 
-// Track button clicks
-client.track("button_click", { qualifier: "signup" });
+# Track button clicks
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "button_click", "qualifier": "signup"}'
 ```
 
 ### Revenue Events
 
 Monitor purchase and subscription events:
 
-```javascript
-// Track one-time purchase
-client.track("purchase", { qualifier: "premium_upgrade", value: 999 });
+```bash
+# Track one-time purchase
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "purchase", "qualifier": "premium_upgrade", "value": 999}'
 
-// Track subscription start
-client.track("subscription", { qualifier: "monthly_plan", value: 499 });
+# Track subscription start
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "subscription", "qualifier": "monthly_plan", "value": 499}'
 
-// Track in-app purchase
-client.track("iap", { qualifier: "coins_pack", value: 299 });
+# Track in-app purchase
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "iap", "qualifier": "coins_pack", "value": 299}'
 ```
 
 ## Setup
@@ -151,6 +187,7 @@ npm run deploy:prod # Deploy to production environment
 npm run setup       # Setup local database with schema
 npm run setup:prod  # Setup production database with schema
 npm run db          # Show database tables
+npm run db:info     # Show database table information
 npm run db:events   # Show all events
 npm run db:stats    # Show all stats
 npm run db:reset    # Reset database (deletes all data)
@@ -193,6 +230,8 @@ Events consist of:
 - `qualifier`: Optional sub-type or specific instance (e.g., "home", "premium_plan")
 - `value`: Numeric value associated with the event (default: 1)
 - `category`: Organizational group (e.g., "engagement", "revenue")
+- `country`: Country code (automatically detected or can be provided)
+- `timestamp`: When the event occurred (defaults to current time)
 
 When an event is tracked, it creates or updates a corresponding stat with the key format `event_type.qualifier`.
 
@@ -202,52 +241,61 @@ When an event is tracked, it creates or updates a corresponding stat with the ke
 
 Track daily active users by recording a "session" event when your app starts:
 
-```javascript
-// User opens the app
-client.track("session", { qualifier: "start" });
+```bash
+# User opens the app - track a session start
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "session", "qualifier": "start"}'
 
-// Later, analyze daily active users
-const dailyActiveUsers = await client.getTimeseries({
-    metric: "session.start",
-    period: "day",
-    limit: 30
-});
+# Later, analyze daily active users
+curl "https://your-worker.workers.dev/timeseries?metric=session.start&period=day&limit=30" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key"
 ```
 
 **Example 2: Feature Adoption**
 
 Track how many users enable a new feature:
 
-```javascript
-// User enables dark mode
-client.track("feature_enabled", { qualifier: "dark_mode" });
+```bash
+# User enables dark mode
+curl -X POST "https://your-worker.workers.dev/track" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "feature_enabled", "qualifier": "dark_mode"}'
 
-// Get total count of feature enablement
-const featureStats = await client.getStats({ prefix: "feature_enabled" });
-console.log(`Dark mode enabled ${featureStats["feature_enabled.dark_mode"]} times`);
+# Get total count of feature enablement
+curl "https://your-worker.workers.dev/stats?prefix=feature_enabled" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key"
 ```
 
 **Example 3: Conversion Funnel**
 
 Track user progression through a signup flow:
 
-```javascript
-// Track each step
-client.track("signup_step", { qualifier: "view_form" });
-client.track("signup_step", { qualifier: "submit_email" });
-client.track("signup_step", { qualifier: "verify_email" });
-client.track("signup_step", { qualifier: "complete" });
+```bash
+# Track each step in the signup flow
+curl -X POST "https://your-worker.workers.dev/track/batch" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {"event_type": "signup_step", "qualifier": "view_form"},
+      {"event_type": "signup_step", "qualifier": "submit_email"},
+      {"event_type": "signup_step", "qualifier": "verify_email"},
+      {"event_type": "signup_step", "qualifier": "complete"}
+    ]
+  }'
 
-// Compare conversion rates between steps
-const funnelData = await client.compareMetrics({
-    metrics: [
-        "signup_step.view_form",
-        "signup_step.submit_email",
-        "signup_step.verify_email",
-        "signup_step.complete"
-    ],
-    period: "day"
-});
+# Compare conversion rates between steps
+curl "https://your-worker.workers.dev/timeseries?metrics=signup_step.view_form,signup_step.submit_email,signup_step.verify_email,signup_step.complete&period=day" \
+  -H "X-App-ID: your-app-id" \
+  -H "X-API-Key: your-api-key"
 ```
 
 ## API Documentation
@@ -269,7 +317,9 @@ Track a single event.
   "event_type": "page_view",
   "qualifier": "home",
   "value": 1,
-  "category": "engagement"
+  "category": "engagement",
+  "timestamp": 1678912345,
+  "country": "US"
 }
 ```
 
@@ -278,6 +328,8 @@ Track a single event.
 - `qualifier` (optional): Event qualifier
 - `value` (optional): Numeric value, defaults to 1
 - `category` (optional): Event category
+- `timestamp` (optional): Unix timestamp, defaults to current time
+- `country` (optional): Country code, automatically detected from request if not provided
 
 **Response:**
 ```json
@@ -286,7 +338,9 @@ Track a single event.
   "app_id": "app1",
   "metric": "page_view.home",
   "category": "engagement",
-  "value": 42
+  "value": 42,
+  "timestamp": 1678912345,
+  "country": "US"
 }
 ```
 
@@ -311,6 +365,31 @@ Track multiple events in a single request.
 }
 ```
 
+**Response:**
+```json
+{
+  "success": true,
+  "app_id": "app1",
+  "processed": 2,
+  "events": [
+    {
+      "event_type": "page_view",
+      "qualifier": "home",
+      "metric": "page_view.home",
+      "category": "engagement",
+      "country": "US"
+    },
+    {
+      "event_type": "button_click",
+      "qualifier": "signup",
+      "metric": "button_click.signup",
+      "category": "interaction",
+      "country": "US"
+    }
+  ]
+}
+```
+
 ### Stats Endpoints
 
 #### GET /stats
@@ -320,7 +399,7 @@ Get all stats for an application.
 - `prefix` (optional): Filter metrics starting with prefix
 - `category` (optional): Filter metrics by category
 - `format` (optional): Response format, either 'simple' (default) or 'detailed'
-- `groupBy` (optional): Group metrics, supports 'category'
+- `view` (optional): View type, supports 'default', 'category', 'top'
 - `paginate` (optional): Enable pagination (true/false)
 - `page` (optional): Page number for pagination
 - `pageSize` (optional): Items per page for pagination
@@ -339,7 +418,8 @@ Get all stats for an application.
   "app_id": "app1",
   "filters": {
     "prefix": null,
-    "category": "engagement"
+    "category": "engagement",
+    "country": null
   },
   "data": [
     {
@@ -352,7 +432,7 @@ Get all stats for an application.
 }
 ```
 
-#### GET /stats/top
+#### GET /stats?view=top
 Get top metrics by value.
 
 **Query Parameters:**
@@ -360,19 +440,54 @@ Get top metrics by value.
 - `limit` (optional): Maximum number of results, defaults to 10
 - `sort` (optional): Sort direction, 'asc' or 'desc' (default)
 
+**Response:**
+```json
+{
+  "app_id": "app1",
+  "category": "all",
+  "sort": "desc",
+  "metrics": [
+    {
+      "metric": "page_view.home",
+      "value": 42,
+      "category": "engagement",
+      "last_updated": "2025-03-09T12:34:56Z"
+    }
+  ]
+}
+```
+
+#### GET /stats?view=category
+Get stats grouped by category.
+
+**Response:**
+```json
+{
+  "app_id": "app1",
+  "groupBy": "category",
+  "data": {
+    "engagement": 156,
+    "revenue": 2850,
+    "lifecycle": 42
+  }
+}
+```
+
 ### Timeseries Endpoints
 
 #### GET /timeseries
-Get time-based data for a specific metric.
+Get time-based data for a specific metric or multiple metrics.
 
 **Query Parameters:**
-- `metric` (required): Metric name
+- `metric` (required if metrics not provided): Single metric name
+- `metrics` (required if metric not provided): Comma-separated list of metrics to compare
 - `period` (optional): Time grouping, one of 'hour', 'day', 'week', 'month', defaults to 'day'
 - `limit` (optional): Maximum number of data points, defaults to 30
-- `from` (optional): Start date (ISO format)
-- `to` (optional): End date (ISO format)
+- `from` (optional): Start date (Unix timestamp or ISO format)
+- `to` (optional): End date (Unix timestamp or ISO format)
+- `country` (optional): Filter by country code
 
-**Response:**
+**Response for single metric:**
 ```json
 {
   "app_id": "app1",
@@ -380,6 +495,7 @@ Get time-based data for a specific metric.
   "period": "day",
   "from": "2025-02-07T00:00:00Z",
   "to": "2025-03-09T00:00:00Z",
+  "country": null,
   "data": [
     {
       "time_period": "2025-03-08",
@@ -393,15 +509,29 @@ Get time-based data for a specific metric.
 }
 ```
 
-#### GET /timeseries/compare
-Compare multiple metrics over time.
-
-**Query Parameters:**
-- `metrics` (required): Comma-separated list of metrics to compare
-- `period` (optional): Time grouping, defaults to 'day'
-- `limit` (optional): Maximum number of data points, defaults to 30
-- `from` (optional): Start date (ISO format)
-- `to` (optional): End date (ISO format)
+**Response for multiple metrics:**
+```json
+{
+  "app_id": "app1",
+  "metrics": ["page_view.home", "page_view.settings"],
+  "period": "day",
+  "from": "2025-02-07T00:00:00Z",
+  "to": "2025-03-09T00:00:00Z",
+  "country": null,
+  "data": [
+    {
+      "time_period": "2025-03-08",
+      "page_view.home": 15,
+      "page_view.settings": 8
+    },
+    {
+      "time_period": "2025-03-09",
+      "page_view.home": 27,
+      "page_view.settings": 12
+    }
+  ]
+}
+```
 
 ### Events Endpoints
 
@@ -411,19 +541,143 @@ Get event history for an application.
 **Query Parameters:**
 - `type` (optional): Filter by event type
 - `category` (optional): Filter by event category
+- `country` (optional): Filter by country code
 - `limit` (optional): Maximum number of events to return, defaults to 50
-- `from` (optional): Start date (ISO format), defaults to 24 hours ago
+- `from` (optional): Start date (Unix timestamp or ISO format), defaults to 24 hours ago
+
+**Response:**
+```json
+{
+  "app_id": "app1",
+  "from": "2025-03-08T12:34:56Z",
+  "count": 2,
+  "events": [
+    {
+      "id": 123,
+      "event_type": "page_view",
+      "event_category": "engagement",
+      "qualifier": "home",
+      "value": 1,
+      "country": "US",
+      "timestamp": "2025-03-09T12:34:56Z"
+    },
+    {
+      "id": 124,
+      "event_type": "button_click",
+      "event_category": "interaction",
+      "qualifier": "signup",
+      "value": 1,
+      "country": "US",
+      "timestamp": "2025-03-09T12:35:23Z"
+    }
+  ]
+}
+```
 
 ### App Endpoints
 
-#### GET /app/summary
-Get a summary of an application.
+#### GET /app
+Get information about a specific app.
 
-#### GET /app/dashboard
+**Query Parameters:**
+- `view` (optional): View type, either 'summary' (default) or 'dashboard'
+
+**Response (summary view):**
+```json
+{
+  "app_id": "app1",
+  "total_events": 1542,
+  "first_event": "2025-01-15T08:23:45Z",
+  "last_event": "2025-03-09T12:34:56Z",
+  "metrics_count": 25,
+  "recent_events": [
+    {
+      "event_type": "page_view",
+      "qualifier": "home",
+      "category": "engagement",
+      "country": "US",
+      "timestamp": "2025-03-09T12:34:56Z"
+    }
+  ]
+}
+```
+
+#### GET /app?view=dashboard
 Get dashboard data for an application.
 
-#### GET /metrics
-Get metadata about available metrics.
+**Response:**
+```json
+{
+  "app_id": "app1",
+  "summary": {
+    "total_events": 1542,
+    "first_event": "2025-01-15T08:23:45Z",
+    "last_event": "2025-03-09T12:34:56Z",
+    "metrics_count": 25
+  },
+  "recent_activity": {
+    "last_24h_events": 145,
+    "last_24h_value": 198
+  },
+  "categories": [
+    {
+      "category": "engagement",
+      "total": 856
+    },
+    {
+      "category": "revenue",
+      "total": 3540
+    }
+  ],
+  "top_countries": [
+    {
+      "country": "US",
+      "event_count": 523,
+      "value_sum": 1245
+    },
+    {
+      "country": "GB",
+      "event_count": 218,
+      "value_sum": 532
+    }
+  ]
+}
+```
+
+#### GET /apps
+Get a list of all available apps.
+
+**Query Parameters:**
+- `stats` (optional): Include stats summary for each app (true/false)
+
+**Response:**
+```json
+{
+  "apps": ["app1", "app2", "app3"]
+}
+```
+
+**Response with stats:**
+```json
+{
+  "apps": [
+    {
+      "app_id": "app1",
+      "total_events": 1542,
+      "first_event": "2025-01-15T08:23:45Z",
+      "last_event": "2025-03-09T12:34:56Z",
+      "metrics_count": 25
+    },
+    {
+      "app_id": "app2",
+      "total_events": 856,
+      "first_event": "2025-02-03T10:15:32Z",
+      "last_event": "2025-03-09T11:22:33Z",
+      "metrics_count": 18
+    }
+  ]
+}
+```
 
 ## Client Libraries
 

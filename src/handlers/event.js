@@ -1,8 +1,11 @@
-// Event tracking API endpoint
-import { determineCategory, errorResponse, successResponse } from '../utils.js';
+/**
+ * Event tracking API handlers
+ */
+import { errorResponse, successResponse, determineCategory, parseDateParam } from '../utils.js';
+import { createEventStatements } from '../utils.js';
 
 /**
- * Handles event tracking requests (POST)
+ * Handles event tracking requests (POST /track)
  *
  * @param {Request} request - The incoming request
  * @param {D1Database} db - The D1 database instance
@@ -18,7 +21,9 @@ export async function handleTrackEvent(request, db, app_id) {
             qualifier = null,
             value = 1,
             category = null,
-            timestamp = Math.floor(Date.now() / 1000)
+            timestamp = Math.floor(Date.now() / 1000),
+            // Allow country to be overridden in the payload if needed
+            country = request.cf?.country || null
         } = data;
 
         // Validate inputs
@@ -29,24 +34,16 @@ export async function handleTrackEvent(request, db, app_id) {
         // Determine category if not provided
         const event_category = category || determineCategory(event_type);
 
-        // Create the metric key (e.g., "install" or "purchase.lifetime")
-        const metric = qualifier ? `${event_type}.${qualifier}` : event_type;
+        // Create statements for events and stats tables
+        const statements = createEventStatements(
+            db, app_id, event_type, event_category, qualifier, value, timestamp, country
+        );
 
-        // Start a transaction to update both tables
-        const stmt1 = db.prepare(
-            "INSERT INTO events (app_id, event_type, event_category, qualifier, value, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
-        ).bind(app_id, event_type, event_category, qualifier, value, timestamp);
-
-        const stmt2 = db.prepare(`
-            INSERT INTO stats (app_id, metric, category, value, last_updated)
-            VALUES (?, ?, ?, ?, ?) ON CONFLICT (app_id, metric) DO
-            UPDATE
-                SET value = value + ?, last_updated = ?
-        `).bind(app_id, metric, event_category, value, timestamp, value, timestamp);
-
-        await db.batch([stmt1, stmt2]);
+        // Execute statements in a batch
+        await db.batch(statements);
 
         // Get the updated counter value
+        const metric = qualifier ? `${event_type}.${qualifier}` : event_type;
         const result = await db.prepare(
             "SELECT value FROM stats WHERE app_id = ? AND metric = ?"
         ).bind(app_id, metric).first();
@@ -59,7 +56,8 @@ export async function handleTrackEvent(request, db, app_id) {
             metric,
             category: event_category,
             value: currentValue,
-            timestamp
+            timestamp,
+            country
         });
     } catch (error) {
         console.error('Track event error:', error);
@@ -68,7 +66,7 @@ export async function handleTrackEvent(request, db, app_id) {
 }
 
 /**
- * Handles batch event tracking requests (POST)
+ * Handles batch event tracking requests (POST /track/batch)
  *
  * @param {Request} request - The incoming request
  * @param {D1Database} db - The D1 database instance
@@ -90,6 +88,8 @@ export async function handleBatchTrackEvents(request, db, app_id) {
         }
 
         const defaultTimestamp = Math.floor(Date.now() / 1000);
+        // Get default country from the request
+        const defaultCountry = request.cf?.country || null;
         const statements = [];
         const results = [];
 
@@ -104,37 +104,28 @@ export async function handleBatchTrackEvents(request, db, app_id) {
                 qualifier = null,
                 value = 1,
                 category = null,
-                timestamp = defaultTimestamp
+                timestamp = defaultTimestamp,
+                // Allow country to be specified per event, or use the request's country
+                country = defaultCountry
             } = event;
 
             // Determine category if not provided
             const event_category = category || determineCategory(event_type);
 
-            // Create the metric key (e.g., "install" or "purchase.lifetime")
+            // Add statements for this event
+            const eventStatements = createEventStatements(
+                db, app_id, event_type, event_category, qualifier, value, timestamp, country
+            );
+            statements.push(...eventStatements);
+
+            // Create the metric key for result tracking
             const metric = qualifier ? `${event_type}.${qualifier}` : event_type;
-
-            // Add statements for events table
-            statements.push(
-                db.prepare(
-                    "INSERT INTO events (app_id, event_type, event_category, qualifier, value, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
-                ).bind(app_id, event_type, event_category, qualifier, value, timestamp)
-            );
-
-            // Add statements for stats table
-            statements.push(
-                db.prepare(`
-                    INSERT INTO stats (app_id, metric, category, value, last_updated)
-                    VALUES (?, ?, ?, ?, ?) ON CONFLICT (app_id, metric) DO
-                    UPDATE
-                        SET value = value + ?, last_updated = ?
-                `).bind(app_id, metric, event_category, value, timestamp, value, timestamp)
-            );
-
             results.push({
                 event_type,
                 qualifier,
                 metric,
-                category: event_category
+                category: event_category,
+                country
             });
         }
 
@@ -154,7 +145,7 @@ export async function handleBatchTrackEvents(request, db, app_id) {
 }
 
 /**
- * Handles event history retrieval (GET)
+ * Handles event history retrieval (GET /events)
  *
  * @param {Request} request - The incoming request
  * @param {D1Database} db - The D1 database instance
@@ -168,14 +159,13 @@ export async function handleEventHistory(request, db, app_id) {
         // Optional parameters
         const event_type = url.searchParams.get('type');
         const category = url.searchParams.get('category');
+        const country = url.searchParams.get('country');
         const limit = Math.min(100, parseInt(url.searchParams.get('limit') || '50'));
-        const fromDate = url.searchParams.get('from') ?
-            Math.floor(new Date(url.searchParams.get('from')).getTime() / 1000) :
-            Math.floor(Date.now() / 1000) - (60 * 60 * 24); // 24 hours ago
+        const fromDate = parseDateParam(url.searchParams.get('from'), 1); // Default 24 hours ago
 
         // Build query
         let query = `
-            SELECT id, event_type, event_category, qualifier, value, 
+            SELECT id, event_type, event_category, qualifier, value, country,
                    datetime(timestamp, 'unixepoch') as timestamp
             FROM events
             WHERE app_id = ?
@@ -194,6 +184,11 @@ export async function handleEventHistory(request, db, app_id) {
             params.push(category);
         }
 
+        if (country) {
+            query += " AND country = ?";
+            params.push(country);
+        }
+
         query += " ORDER BY timestamp DESC LIMIT ?";
         params.push(limit);
 
@@ -203,7 +198,7 @@ export async function handleEventHistory(request, db, app_id) {
         return successResponse({
             app_id,
             from: new Date(fromDate * 1000).toISOString(),
-            count: results.length,
+            count: results?.length || 0,
             events: results || []
         });
     } catch (error) {

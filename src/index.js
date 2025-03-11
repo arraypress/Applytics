@@ -1,27 +1,38 @@
-// Main entry point for Cloudflare Applytics
-import {handleTrackEvent, handleBatchTrackEvents, handleEventHistory} from './api/events.js';
-import {handleStatsQuery, handleTopMetrics, handleMetricsMetadata} from './api/stats.js';
-import {handleTimeseriesQuery, handleComparisonQuery} from './api/timeseries.js';
-import {handleAppsQuery, handleAppSummary, handleAppDashboard} from './api/apps.js';
+/**
+ * Main entry point for Cloudflare Applytics
+ * A lightweight analytics tracking system for applications
+ */
+import {handleTrackEvent, handleBatchTrackEvents, handleEventHistory} from './handlers/event.js';
+import {handleStatsQuery} from './handlers/stats.js';
+import {handleTimeseriesQuery} from './handlers/timeseries.js';
+import {handleAppInfo} from './handlers/app.js';
 import {verifyApiRequest} from './auth.js';
 import {errorResponse} from './utils.js';
 
 export default {
+
+    /**
+     * Main request handler for all Applytics API requests
+     *
+     * @param {Request} request - The incoming HTTP request
+     * @param {Object} env - Environment variables and bindings
+     * @param {Object} ctx - Execution context
+     * @returns {Response} HTTP response
+     */
     async fetch(request, env, ctx) {
         try {
-
             // Parse request info
             const url = new URL(request.url);
             const pathParts = url.pathname.split('/').filter(Boolean);
 
             // Special case: Apps list endpoint doesn't require app-specific auth
             if (request.method === 'GET' && pathParts[0] === 'apps' && !pathParts[1]) {
-                const authResult = verifyApiRequest(request, env);
+                const authResult = verifyApiRequest(request, env, true); // Pass a flag to skip app_id check
                 if (!authResult.success) {
                     return errorResponse('Authentication failed', 403, authResult.error);
                 }
 
-                return handleAppsQuery(request, env.DB);
+                return handleAppInfo(request, env.DB);
             }
 
             // All other API requests require authentication with valid app_id
@@ -49,43 +60,24 @@ export default {
             } else if (request.method === 'GET') {
                 // Data retrieval endpoints
 
-                // App-related endpoints
+                // App information endpoint
                 if (pathParts[0] === 'app') {
-                    if (pathParts[1] === 'summary') {
-                        return handleAppSummary(request, env.DB, app_id);
-                    } else if (pathParts[1] === 'dashboard') {
-                        return handleAppDashboard(request, env.DB, app_id);
-                    } else {
-                        return errorResponse('Invalid app endpoint', 404);
-                    }
+                    return handleAppInfo(request, env.DB, app_id);
                 }
 
-                // Events endpoints
+                // Events history endpoint
                 else if (pathParts[0] === 'events') {
                     return handleEventHistory(request, env.DB, app_id);
                 }
 
-                // Stats endpoints
+                // Stats endpoint
                 else if (pathParts[0] === 'stats') {
-                    if (pathParts[1] === 'top') {
-                        return handleTopMetrics(request, env.DB, app_id);
-                    } else {
-                        return handleStatsQuery(request, env.DB, app_id);
-                    }
+                    return handleStatsQuery(request, env.DB, app_id);
                 }
 
-                // Metrics endpoints
-                else if (pathParts[0] === 'metrics') {
-                    return handleMetricsMetadata(request, env.DB, app_id);
-                }
-
-                // Timeseries endpoints
+                // Timeseries endpoint
                 else if (pathParts[0] === 'timeseries') {
-                    if (pathParts[1] === 'compare') {
-                        return handleComparisonQuery(request, env.DB, app_id);
-                    } else {
-                        return handleTimeseriesQuery(request, env.DB, app_id);
-                    }
+                    return handleTimeseriesQuery(request, env.DB, app_id);
                 } else {
                     return errorResponse('Invalid endpoint', 404);
                 }

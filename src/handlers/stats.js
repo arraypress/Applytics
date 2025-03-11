@@ -1,8 +1,14 @@
-// Stats API endpoint
+/**
+ * Stats API handlers
+ */
 import { errorResponse, successResponse, getPaginationParams } from '../utils.js';
 
 /**
- * Handles stats queries (GET requests)
+ * Handles stats queries (GET /stats)
+ * Supports different views:
+ * - Default: Basic stats with filtering
+ * - ?view=top: Top metrics by value
+ * - ?view=category: Group by category
  *
  * @param {Request} request - The incoming request
  * @param {D1Database} db - The D1 database instance
@@ -14,29 +20,17 @@ export async function handleStatsQuery(request, db, app_id) {
         const url = new URL(request.url);
 
         // Query parameters
+        const view = url.searchParams.get('view') || 'default';
         const prefix = url.searchParams.get('prefix');
         const category = url.searchParams.get('category');
-        const groupBy = url.searchParams.get('groupBy');
+        const country = url.searchParams.get('country');
         const format = url.searchParams.get('format') || 'simple';
 
-        // Handle special case for grouping by category
-        if (groupBy === 'category') {
-            const query = "SELECT category, SUM(value) as total FROM stats WHERE app_id = ? GROUP BY category";
-            const { results } = await db.prepare(query).bind(app_id).all();
-
-            // Format results as category groups
-            const stats = {};
-            if (results) {
-                for (const row of results) {
-                    stats[row.category || 'general'] = row.total;
-                }
-            }
-
-            return successResponse({
-                app_id,
-                groupBy: 'category',
-                data: stats
-            });
+        // Handle different view types
+        if (view === 'category') {
+            return handleCategoryGrouping(db, app_id);
+        } else if (view === 'top') {
+            return handleTopMetrics(request, db, app_id);
         }
 
         // Standard metrics query with filters
@@ -89,7 +83,8 @@ export async function handleStatsQuery(request, db, app_id) {
                 app_id,
                 filters: {
                     prefix: prefix || null,
-                    category: category || null
+                    category: category || null,
+                    country: country || null
                 },
                 data: formattedResults
             };
@@ -124,105 +119,71 @@ export async function handleStatsQuery(request, db, app_id) {
 }
 
 /**
- * Handles top metrics queries (GET)
+ * Handles grouping stats by category
  *
- * @param {Request} request - The incoming request
  * @param {D1Database} db - The D1 database instance
  * @param {string} app_id - The application ID
  * @returns {Response} - The API response
  */
-export async function handleTopMetrics(request, db, app_id) {
-    try {
-        const url = new URL(request.url);
+async function handleCategoryGrouping(db, app_id) {
+    const query = "SELECT category, SUM(value) as total FROM stats WHERE app_id = ? GROUP BY category";
+    const { results } = await db.prepare(query).bind(app_id).all();
 
-        // Query parameters
-        const category = url.searchParams.get('category');
-        const limit = Math.min(100, parseInt(url.searchParams.get('limit') || '10'));
-        const sort = url.searchParams.get('sort')?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-
-        // Build query
-        let query = `
-            SELECT metric, value, category, datetime(last_updated, 'unixepoch') as last_updated
-            FROM stats 
-            WHERE app_id = ?
-        `;
-
-        let params = [app_id];
-
-        if (category) {
-            query += " AND category = ?";
-            params.push(category);
+    // Format results as category groups
+    const stats = {};
+    if (results) {
+        for (const row of results) {
+            stats[row.category || 'general'] = row.total;
         }
-
-        query += ` ORDER BY value ${sort} LIMIT ?`;
-        params.push(limit);
-
-        // Execute query
-        const { results } = await db.prepare(query).bind(...params).all();
-
-        return successResponse({
-            app_id,
-            category: category || 'all',
-            sort: sort.toLowerCase(),
-            metrics: results || []
-        });
-    } catch (error) {
-        console.error('Top metrics error:', error);
-        return errorResponse('Failed to retrieve top metrics', 500, error.message);
     }
+
+    return successResponse({
+        app_id,
+        groupBy: 'category',
+        data: stats
+    });
 }
 
 /**
- * Handles metrics metadata requests
+ * Handles top metrics queries
  *
  * @param {Request} request - The incoming request
  * @param {D1Database} db - The D1 database instance
  * @param {string} app_id - The application ID
  * @returns {Response} - The API response
  */
-export async function handleMetricsMetadata(request, db, app_id) {
-    try {
-        const { results } = await db.prepare(`
-            SELECT 
-                s.metric,
-                s.category,
-                s.last_updated,
-                COUNT(DISTINCT e.qualifier) as qualifier_count
-            FROM stats s
-            LEFT JOIN events e ON 
-                s.app_id = e.app_id AND
-                s.metric LIKE (e.event_type || '%')
-            WHERE s.app_id = ?
-            GROUP BY s.metric
-            ORDER BY s.category, s.metric
-        `).bind(app_id).all();
+async function handleTopMetrics(request, db, app_id) {
+    const url = new URL(request.url);
 
-        // Process results to create metadata
-        const metricsByCategory = {};
+    // Query parameters
+    const category = url.searchParams.get('category');
+    const limit = Math.min(100, parseInt(url.searchParams.get('limit') || '10'));
+    const sort = url.searchParams.get('sort')?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-        if (results) {
-            for (const row of results) {
-                const category = row.category || 'general';
+    // Build query
+    let query = `
+    SELECT metric, value, category, datetime(last_updated, 'unixepoch') as last_updated
+    FROM stats 
+    WHERE app_id = ?
+  `;
 
-                if (!metricsByCategory[category]) {
-                    metricsByCategory[category] = [];
-                }
+    let params = [app_id];
 
-                metricsByCategory[category].push({
-                    name: row.metric,
-                    last_updated: row.last_updated ?
-                        new Date(row.last_updated * 1000).toISOString() : null,
-                    has_qualifiers: row.qualifier_count > 0
-                });
-            }
-        }
-
-        return successResponse({
-            app_id,
-            categories: metricsByCategory
-        });
-    } catch (error) {
-        console.error('Metrics metadata error:', error);
-        return errorResponse('Failed to retrieve metrics metadata', 500, error.message);
+    if (category) {
+        query += " AND category = ?";
+        params.push(category);
     }
+
+    query += ` ORDER BY value ${sort} LIMIT ?`;
+    params.push(limit);
+
+    // Execute query
+    const { results } = await db.prepare(query).bind(...params).all();
+
+    return successResponse({
+        app_id,
+        category: category || 'all',
+        sort: sort.toLowerCase(),
+        metrics: results || []
+    });
 }
